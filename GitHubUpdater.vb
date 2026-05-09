@@ -2,13 +2,12 @@
 Imports System.IO
 Imports System.IO.Compression
 Imports System.Net
-Imports System.Text
 Public Class GitHubUpdater
     Structure Properties
         '### THESE 3 PROPERTIES WILL FORM THE UPDATE URL ###
         Shared ReadOnly Property RepositoryOwnerName As String = "sYnapZiX"
         Shared ReadOnly Property RepositoryName As String = "GitHubUpdater"
-        Shared ReadOnly Property AssetFile As String = "Release.zip"
+        Shared ReadOnly Property AssetFile As String = "Release_BIG.zip"
 
         '### THIS PROPERTY WILL TELL THE UPDATER THE LENGTH OF THE VERSION STRING ###
         Shared ReadOnly Property VersionDigits As Byte = 2
@@ -39,7 +38,7 @@ Public Class GitHubUpdater
                     Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
                     ZipFile.ExtractToDirectory(DownloadTarget, ExtractionTarget)
                     File.Delete(DownloadTarget)
-                    Using UpdateScriptWriter As New StreamWriter(UpdateScript, False, Encoding.UTF8)
+                    Using UpdateScriptWriter As New StreamWriter(UpdateScript, False)
                         UpdateScriptWriter.WriteLine("@echo off")
                         If Threading.Thread.CurrentThread.CurrentCulture.TwoLetterISOLanguageName = "de" Then '     GERMAN
                             UpdateScriptWriter.WriteLine("echo " & My.Application.Info.ProductName & " Aktualisierungsprogramm")
@@ -82,15 +81,15 @@ Public Class GitHubUpdater
                         UpdateScriptWriter.WriteLine("timeout 5 /NOBREAK")
                         UpdateScriptWriter.WriteLine("cls")
                         If TemporaryBuffer.ExecutableToMove = "" Then
-                            UpdateScriptWriter.WriteLine("robocopy " & """" & DownloadTarget & """ """ & TargetFolder & """ /E /MOVE")
+                            UpdateScriptWriter.WriteLine("robocopy " & """" & ExtractionTarget & """ """ & TargetFolder & """ /E /MOVE")
                         Else
                             UpdateScriptWriter.WriteLine("del " & """" & LaunchExecutable & """")
                             UpdateScriptWriter.WriteLine("move " & """" & Properties.TemporaryFolder & "\" & TemporaryBuffer.ExecutableToMove & """ """ & LaunchExecutable & """")
                             TemporaryBuffer.ExecutableToMove = ""
                         End If
                         UpdateScriptWriter.WriteLine("cls")
-                        UpdateScriptWriter.WriteLine("start " & """" & LaunchExecutable & """")
-                        UpdateScriptWriter.WriteLine("exit")
+                        UpdateScriptWriter.WriteLine("start " & """"" " & """" & LaunchExecutable & """")
+                        UpdateScriptWriter.Write("exit")
                         UpdateScriptWriter.Flush()
                         UpdateScriptWriter.Close()
                     End Using
@@ -144,7 +143,9 @@ Public Class GitHubUpdater
                     Application.DoEvents()
                     Using UpdateClient As New WebClient
                         Dim UpdateURL As String = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest"
+                        Dim GitHubBuffer As New Char()
                         Dim GitHubPage As String = UpdateClient.DownloadString(UpdateURL)
+                        Application.DoEvents()
                         Dim StartIndex As Integer = GitHubPage.IndexOf("<title>")
                         Dim EndIndex As Integer = GitHubPage.IndexOf("Â·")
                         If StartIndex <> -1 AndAlso EndIndex <> -1 Then
@@ -160,6 +161,7 @@ Public Class GitHubUpdater
                                     CurrentVersion = My.Application.Info.Version.Major.ToString & "." & My.Application.Info.Version.Minor.ToString & "." & My.Application.Info.Version.Build.ToString & "." & My.Application.Info.Version.MinorRevision.ToString
                             End Select
                             Dim UpdateVersion As String = GitHubPage.Substring(StartIndex + 7, EndIndex - StartIndex - 8).Replace("Release ", "")
+                            GitHubPage = String.Empty
                             If UpdateVersion = "Releases" Then UpdateVersion = CurrentVersion
                             If Not Properties.Silent AndAlso CurrentVersion <> UpdateVersion Then
                                 Dim Result As New DialogResult
@@ -246,7 +248,7 @@ Public Class GitHubUpdater
                             Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
                             ZipFile.ExtractToDirectory(DownloadTarget, ExtractionTarget)
                             File.Delete(DownloadTarget)
-                            Using UpdateScriptWriter As New StreamWriter(UpdateScript, False, Encoding.UTF8)
+                            Using UpdateScriptWriter As New StreamWriter(UpdateScript, False)
                                 UpdateScriptWriter.WriteLine("@echo off")
                                 If Threading.Thread.CurrentThread.CurrentCulture.TwoLetterISOLanguageName = "de" Then '     GERMAN
                                     UpdateScriptWriter.WriteLine("echo " & My.Application.Info.ProductName & " Aktualisierungsprogramm")
@@ -289,14 +291,14 @@ Public Class GitHubUpdater
                                 UpdateScriptWriter.WriteLine("timeout 5 /NOBREAK")
                                 UpdateScriptWriter.WriteLine("cls")
                                 If ExecutableToMove = "" Then
-                                    UpdateScriptWriter.WriteLine("robocopy " & """" & DownloadTarget & """ """ & TargetFolder & """ /E /MOVE")
+                                    UpdateScriptWriter.WriteLine("robocopy " & """" & ExtractionTarget & """ """ & TargetFolder & """ /E /MOVE")
                                 Else
                                     UpdateScriptWriter.WriteLine("del " & """" & LaunchExecutable & """")
                                     UpdateScriptWriter.WriteLine("move " & """" & Properties.TemporaryFolder & "\" & ExecutableToMove & """ """ & LaunchExecutable & """")
                                 End If
                                 UpdateScriptWriter.WriteLine("cls")
-                                UpdateScriptWriter.WriteLine("start " & """" & LaunchExecutable & """")
-                                UpdateScriptWriter.WriteLine("exit")
+                                UpdateScriptWriter.WriteLine("start " & """"" " & """" & LaunchExecutable & """")
+                                UpdateScriptWriter.Write("exit")
                                 UpdateScriptWriter.Flush()
                                 UpdateScriptWriter.Close()
                             End Using
