@@ -15,7 +15,8 @@
         Shared ReadOnly Property TemporaryFolder As String = IO.Path.GetTempPath & "GitHubUpdater"
 
         '### THESE PROPERTIES CAN BE SET AT RUNTINE ###
-        Shared Property Silent As Boolean = False '     SHOW / HIDE MESSAGES
+        Shared Property Retries As Integer = 4 '        NUMBER OF RETRIES FOR CHECKING AND DOWNLOADING
+        Shared Property Silent As Boolean = False '     SHOW/HIDE MESSAGES/PROMTS
         Shared Property Timeout As Integer = 250 '      WEBCLIENT TIMEOUT
     End Structure
     Structure UserInterface
@@ -67,24 +68,30 @@
                 Dim LaunchExecutable As String = TargetFolder & "\" & IO.Path.GetFileName(Application.ExecutablePath)
                 If Properties.AssetFile.EndsWith(".zip") Then
                     Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
-                    Application.DoEvents()
                     UserInterface.UpdateStage1()
+                    Application.DoEvents()
                     IO.Compression.ZipFile.ExtractToDirectory(DownloadTarget, ExtractionTarget)
-                    Application.DoEvents()
                     UserInterface.UpdateStage2()
+                    Application.DoEvents()
                     IO.File.Delete(DownloadTarget)
-                    Application.DoEvents()
                     UserInterface.UpdateStage3()
-                    UpdateScript.Create(TemporaryBuffer.ExecutableToMove, ExtractionTarget, LaunchExecutable, TargetFolder)
                     Application.DoEvents()
+                    UpdateScript.Create(TemporaryBuffer.ExecutableToMove, ExtractionTarget, LaunchExecutable, TargetFolder)
                     UserInterface.UpdateStage4()
+                    Application.DoEvents()
                     UpdateScript.Run()
                     End
                 End If
             Else
-                TemporaryBuffer.ExecutableToMove = ""
-                Application.DoEvents()
-                UserInterface.DownloadFailed()
+                For i = 1 To Properties.Retries
+                    If i = Properties.Retries Then
+                        TemporaryBuffer.ExecutableToMove = ""
+                        UserInterface.DownloadFailed()
+                        Application.DoEvents()
+                    Else
+                        Download()
+                    End If
+                Next
             End If
         End Sub
     End Structure
@@ -220,13 +227,23 @@
         Try
             CleanupTemporaryFiles()
             If My.Computer.Network.Ping("www.github.com", Properties.Timeout) Then
-                Application.DoEvents()
                 Using UpdateClient As New Net.WebClient
                     Dim UpdateURL As String = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest"
                     Dim GitHubBuffer As New Char()
-                    Application.DoEvents()
                     UserInterface.CheckStage1()
-                    Dim GitHubPage As String = UpdateClient.DownloadString(UpdateURL)
+                    Application.DoEvents()
+                    Dim GitHubPage As String = String.Empty
+                    For i = 1 To Properties.Retries
+                        If i = Properties.Retries Then
+                            GitHubPage = UpdateClient.DownloadString(UpdateURL)
+                        Else
+                            Try
+                                GitHubPage = UpdateClient.DownloadString(UpdateURL)
+                            Catch
+                            End Try
+                        End If
+                        If Not GitHubPage = String.Empty Then Exit For
+                    Next
                     Dim StartIndex As Integer = GitHubPage.IndexOf("<title>")
                     Dim EndIndex As Integer = GitHubPage.IndexOf("Â·")
                     If StartIndex <> -1 AndAlso EndIndex <> -1 Then
@@ -245,23 +262,23 @@
                         GitHubPage = String.Empty
                         If UpdateVersion = "Releases" Then UpdateVersion = CurrentVersion
                         If Not Properties.Silent AndAlso CurrentVersion <> UpdateVersion Then
-                            Application.DoEvents()
                             UserInterface.CheckTrue()
+                            Application.DoEvents()
                             If Strings.UpdateAvailable = DialogResult.Yes Then Return True
                         ElseIf CurrentVersion <> UpdateVersion Then
-                            Application.DoEvents()
                             UserInterface.CheckTrue()
+                            Application.DoEvents()
                             Return True
                         Else
-                            Application.DoEvents()
                             UserInterface.CheckFalse()
+                            Application.DoEvents()
                         End If
                     End If
                 End Using
             End If
         Catch
-            Application.DoEvents()
             UserInterface.CheckFailed()
+            Application.DoEvents()
             If Not Properties.Silent Then
                 Strings.UpdateCheckFailed()
             End If
@@ -290,20 +307,30 @@
                         Dim DownloadTarget As String = Properties.TemporaryFolder & "\" & Properties.AssetFile
                         Dim TargetFolder As String = My.Application.Info.DirectoryPath
                         Dim LaunchExecutable As String = TargetFolder & "\" & IO.Path.GetFileName(Application.ExecutablePath)
-                        UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
+                        For i = 1 To Properties.Retries
+                            If i = Properties.Retries Then
+                                UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
+                            Else
+                                Try
+                                    UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
+                                Catch
+                                End Try
+                            End If
+                            If IO.File.Exists(DownloadTarget) Then Exit For
+                        Next
                         If Properties.AssetFile.EndsWith(".zip") Then
                             Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
-                            Application.DoEvents()
                             UserInterface.UpdateStage1()
+                            Application.DoEvents()
                             IO.Compression.ZipFile.ExtractToDirectory(DownloadTarget, ExtractionTarget)
-                            Application.DoEvents()
                             UserInterface.UpdateStage2()
+                            Application.DoEvents()
                             IO.File.Delete(DownloadTarget)
-                            Application.DoEvents()
                             UserInterface.UpdateStage3()
-                            UpdateScript.Create(ExecutableToMove, ExtractionTarget, LaunchExecutable, TargetFolder)
                             Application.DoEvents()
+                            UpdateScript.Create(ExecutableToMove, ExtractionTarget, LaunchExecutable, TargetFolder)
                             UserInterface.UpdateStage4()
+                            Application.DoEvents()
                             UpdateScript.Run()
                             End
                         End If
@@ -311,8 +338,8 @@
                 End Using
             End If
         Catch
-            Application.DoEvents()
             UserInterface.DownloadFailed()
+            Application.DoEvents()
         End Try
     End Sub
 End Class
