@@ -14,6 +14,9 @@
         '### THIS PROPERTY DEFINES THE TEMPORARY FOLDER ###
         Shared ReadOnly Property TemporaryFolder As String = IO.Path.GetTempPath & "GitHubUpdater"
 
+        '### THIS PROPERTY IS OPTIONAL IF SPLIT ACRHIVES ARE USED ### (SEE: 'https://github.com/sYnapZiX/ArchiveSplitter' FOR MORE INFORMATION)
+        Shared ReadOnly Property AssetParts As Integer = 1
+
         '### THESE PROPERTIES CAN BE SET AT RUNTINE ###
         Shared Property Retries As Integer = 4 '        NUMBER OF RETRIES FOR CHECKING AND DOWNLOADING
         Shared Property Silent As Boolean = False '     SHOW/HIDE MESSAGES/PROMTS
@@ -62,11 +65,13 @@
             UserInterface.DownloadProgress(e.ProgressPercentage)
         End Sub
         Public Shared Sub DownloadFinishedAsynchronous(sender As Object, e As ComponentModel.AsyncCompletedEventArgs)
+            UserInterface.DownloadProgress(0)
+            Application.DoEvents()
             If Not e.Cancelled Then
-                Dim DownloadTarget As String = Properties.TemporaryFolder & "\" & Properties.AssetFile
-                Dim TargetFolder As String = My.Application.Info.DirectoryPath
-                Dim LaunchExecutable As String = TargetFolder & "\" & IO.Path.GetFileName(Application.ExecutablePath)
                 If Properties.AssetFile.EndsWith(".zip") Then
+                    Dim DownloadTarget As String = Properties.TemporaryFolder & "\" & Properties.AssetFile
+                    Dim TargetFolder As String = My.Application.Info.DirectoryPath
+                    Dim LaunchExecutable As String = TargetFolder & "\" & IO.Path.GetFileName(Application.ExecutablePath)
                     Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
                     UserInterface.UpdateStage1()
                     Application.DoEvents()
@@ -81,6 +86,56 @@
                     Application.DoEvents()
                     UpdateScript.Run()
                     End
+                ElseIf Properties.AssetFile.EndsWith(".s001") Then
+                    Dim TempAssetFile As String = Properties.AssetFile.Replace(".s001", "")
+                    Dim TargetFolder As String = My.Application.Info.DirectoryPath
+                    Dim LaunchExecutable As String = TargetFolder & "\" & IO.Path.GetFileName(Application.ExecutablePath)
+                    If TemporaryBuffer.FileCount = Properties.AssetParts Then
+                        Dim DownloadTarget As String = Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & TemporaryBuffer.FileCount.ToString("000")
+                        Try
+                            For i = 1 To Properties.AssetParts
+                                If IO.File.Exists(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000")) Then
+                                    Dim FileLength As Long = New IO.FileInfo(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000")).Length
+                                    Dim Append As Boolean = False
+                                    If i = 1 Then
+                                        Append = False
+                                    Else
+                                        Append = True
+                                    End If
+                                    Using FileWriter As New IO.StreamWriter(Properties.TemporaryFolder & "\" & TempAssetFile, Append, Text.Encoding.Default)
+                                        FileWriter.Write(IO.File.ReadAllText(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000"), Text.Encoding.Default))
+                                        FileWriter.Flush()
+                                        FileWriter.Close()
+                                    End Using
+                                    IO.File.Delete(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000"))
+                                Else
+                                    Exit For
+                                End If
+                            Next
+                        Catch
+                            TemporaryBuffer.ExecutableToMove = ""
+                            UserInterface.DownloadFailed()
+                            Application.DoEvents()
+                        End Try
+                        UserInterface.UpdateStage1()
+                        Application.DoEvents()
+                        IO.Compression.ZipFile.ExtractToDirectory(Properties.TemporaryFolder & "\" & TempAssetFile, Properties.TemporaryFolder & "\" & TempAssetFile.Replace(".zip", ""))
+                        UserInterface.UpdateStage2()
+                        Application.DoEvents()
+                        IO.File.Delete(Properties.TemporaryFolder & "\" & TempAssetFile)
+                        UserInterface.UpdateStage3()
+                        Application.DoEvents()
+                        UpdateScript.Create(TemporaryBuffer.ExecutableToMove, Properties.TemporaryFolder & "\" & TempAssetFile.Replace(".zip", ""), LaunchExecutable, TargetFolder)
+                        UserInterface.UpdateStage4()
+                        Application.DoEvents()
+                        UpdateScript.Run()
+                        End
+                    Else
+                        RemoveHandler TemporaryBuffer.AsynchronousWebClient.DownloadProgressChanged, AddressOf DownloadProgressAsynchronous
+                        RemoveHandler TemporaryBuffer.AsynchronousWebClient.DownloadFileCompleted, AddressOf DownloadFinishedAsynchronous
+                        TemporaryBuffer.FileCount += 1
+                        Download(TemporaryBuffer.ExecutableToMove, "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest/download/" & TempAssetFile & ".s" & TemporaryBuffer.FileCount.ToString("000"), Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & TemporaryBuffer.FileCount.ToString("000"))
+                    End If
                 End If
             Else
                 For i = 1 To Properties.Retries
@@ -154,7 +209,9 @@
         End Sub
     End Structure
     Structure TemporaryBuffer
+        Shared AsynchronousWebClient As Net.WebClient
         Shared ExecutableToMove As String = ""
+        Shared FileCount As Integer = 1
     End Structure
     Structure UpdateScript
         Public Shared Sub Create(ExecutableToMove As String, ExtractionTarget As String, LaunchExecutable As String, TargetFolder As String)
@@ -291,57 +348,150 @@
         End Try
         Return False
     End Function
-    Public Shared Sub Download(Optional ExecutableToMove As String = "")
+    Public Shared Sub Download(Optional ExecutableToMove As String = "", Optional UpdateURLOverride As String = "", Optional DownloadTargetOverride As String = "")
         Try
             If My.Computer.Network.Ping("www.github.com", Properties.Timeout) Then
-                If Not IO.Directory.Exists(Properties.TemporaryFolder) Then
-                    IO.Directory.CreateDirectory(Properties.TemporaryFolder)
-                Else
-                    IO.Directory.Delete(Properties.TemporaryFolder, True)
-                    IO.Directory.CreateDirectory(Properties.TemporaryFolder)
-                End If
-                Using UpdateClient As New Net.WebClient
-                    If Properties.Asynchronous Then
-                        Dim UpdateURL As String = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest/download/" & Properties.AssetFile
-                        Dim DownloadTarget As String = Properties.TemporaryFolder & "\" & Properties.AssetFile
-                        AddHandler UpdateClient.DownloadProgressChanged, AddressOf Handler.DownloadProgressAsynchronous
-                        AddHandler UpdateClient.DownloadFileCompleted, AddressOf Handler.DownloadFinishedAsynchronous
-                        TemporaryBuffer.ExecutableToMove = ExecutableToMove
-                        UpdateClient.DownloadFileAsync(New Uri(UpdateURL), DownloadTarget)
+                If UpdateURLOverride = "" AndAlso DownloadTargetOverride = "" Then
+                    If Not IO.Directory.Exists(Properties.TemporaryFolder) Then
+                        IO.Directory.CreateDirectory(Properties.TemporaryFolder)
                     Else
-                        Dim UpdateURL As String = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest/download/" & Properties.AssetFile
-                        Dim DownloadTarget As String = Properties.TemporaryFolder & "\" & Properties.AssetFile
+                        IO.Directory.Delete(Properties.TemporaryFolder, True)
+                        IO.Directory.CreateDirectory(Properties.TemporaryFolder)
+                    End If
+                End If
+                If Properties.Asynchronous Then
+                    Dim UpdateURL As String = String.Empty
+                    Dim DownloadTarget As String = String.Empty
+                    If UpdateURLOverride = "" Then
+                        UpdateURL = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest/download/" & Properties.AssetFile
+                    Else
+                        UpdateURL = UpdateURLOverride
+                    End If
+                    If DownloadTargetOverride = "" Then
+                        DownloadTarget = Properties.TemporaryFolder & "\" & Properties.AssetFile
+                    Else
+                        DownloadTarget = DownloadTargetOverride
+                    End If
+                    TemporaryBuffer.AsynchronousWebClient = New Net.WebClient
+                    AddHandler TemporaryBuffer.AsynchronousWebClient.DownloadProgressChanged, AddressOf Handler.DownloadProgressAsynchronous
+                    AddHandler TemporaryBuffer.AsynchronousWebClient.DownloadFileCompleted, AddressOf Handler.DownloadFinishedAsynchronous
+                    TemporaryBuffer.ExecutableToMove = ExecutableToMove
+                    TemporaryBuffer.AsynchronousWebClient.DownloadFileAsync(New Uri(UpdateURL), DownloadTarget)
+                Else
+                    Using UpdateClient As New Net.WebClient
+                        Dim UpdateURL As String = String.Empty
+                        Dim DownloadTarget As String = String.Empty
                         Dim TargetFolder As String = My.Application.Info.DirectoryPath
                         Dim LaunchExecutable As String = TargetFolder & "\" & IO.Path.GetFileName(Application.ExecutablePath)
-                        For i = 1 To Properties.Retries
-                            If i = Properties.Retries Then
-                                UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
-                            Else
-                                Try
-                                    UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
-                                Catch
-                                End Try
-                            End If
-                            If IO.File.Exists(DownloadTarget) Then Exit For
-                        Next
                         If Properties.AssetFile.EndsWith(".zip") Then
-                            Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
-                            UserInterface.UpdateStage1()
-                            Application.DoEvents()
-                            IO.Compression.ZipFile.ExtractToDirectory(DownloadTarget, ExtractionTarget)
-                            UserInterface.UpdateStage2()
-                            Application.DoEvents()
-                            IO.File.Delete(DownloadTarget)
-                            UserInterface.UpdateStage3()
-                            Application.DoEvents()
-                            UpdateScript.Create(ExecutableToMove, ExtractionTarget, LaunchExecutable, TargetFolder)
-                            UserInterface.UpdateStage4()
-                            Application.DoEvents()
-                            UpdateScript.Run()
-                            End
+                            If UpdateURLOverride = "" Then
+                                UpdateURL = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest/download/" & Properties.AssetFile
+                            Else
+                                UpdateURL = UpdateURLOverride
+                            End If
+                            If DownloadTargetOverride = "" Then
+                                DownloadTarget = Properties.TemporaryFolder & "\" & Properties.AssetFile
+                            Else
+                                DownloadTarget = DownloadTargetOverride
+                            End If
+                            For i = 1 To Properties.Retries
+                                If i = Properties.Retries Then
+                                    UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
+                                Else
+                                    Try
+                                        UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
+                                    Catch
+                                    End Try
+                                End If
+                                If IO.File.Exists(DownloadTarget) Then Exit For
+                            Next
+                            If IO.File.Exists(DownloadTarget) Then
+                                Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
+                                UserInterface.UpdateStage1()
+                                Application.DoEvents()
+                                IO.Compression.ZipFile.ExtractToDirectory(DownloadTarget, ExtractionTarget)
+                                UserInterface.UpdateStage2()
+                                Application.DoEvents()
+                                IO.File.Delete(DownloadTarget)
+                                UserInterface.UpdateStage3()
+                                Application.DoEvents()
+                                UpdateScript.Create(ExecutableToMove, ExtractionTarget, LaunchExecutable, TargetFolder)
+                                UserInterface.UpdateStage4()
+                                Application.DoEvents()
+                                UpdateScript.Run()
+                                End
+                            Else
+                                UserInterface.DownloadFailed()
+                                Application.DoEvents()
+                            End If
+                        ElseIf Properties.AssetFile.EndsWith(".s001") Then
+                            Dim TempAssetFile As String = Properties.AssetFile.Replace(".s001", "")
+                            For i = 1 To Properties.AssetParts
+                                If UpdateURLOverride = "" Then
+                                    UpdateURL = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest/download/" & TempAssetFile & ".s" & i.ToString("000")
+                                Else
+                                    UpdateURL = UpdateURLOverride
+                                End If
+                                If DownloadTargetOverride = "" Then
+                                    DownloadTarget = Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000")
+                                Else
+                                    DownloadTarget = DownloadTargetOverride
+                                End If
+                                For i2 = 1 To Properties.Retries
+                                    Try
+                                        UpdateClient.DownloadFile(UpdateURL, DownloadTarget)
+                                    Catch
+                                    End Try
+                                    If IO.File.Exists(DownloadTarget) Then Exit For
+                                Next
+                                If i = Properties.AssetParts Then Exit For
+                            Next
+                            Try
+                                For i = 1 To Properties.AssetParts
+                                    If IO.File.Exists(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000")) Then
+                                        Dim FileLength As Long = New IO.FileInfo(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000")).Length
+                                        Dim Append As Boolean = False
+                                        If i = 1 Then
+                                            Append = False
+                                        Else
+                                            Append = True
+                                        End If
+                                        Using FileWriter As New IO.StreamWriter(Properties.TemporaryFolder & "\" & TempAssetFile, Append, Text.Encoding.Default)
+                                            FileWriter.Write(IO.File.ReadAllText(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000"), Text.Encoding.Default))
+                                            FileWriter.Flush()
+                                            FileWriter.Close()
+                                        End Using
+                                        IO.File.Delete(Properties.TemporaryFolder & "\" & TempAssetFile & ".s" & i.ToString("000"))
+                                    Else
+                                        Exit For
+                                    End If
+                                Next
+                                If IO.File.Exists(Properties.TemporaryFolder & "\" & TempAssetFile) Then
+                                    Dim ExtractionTarget As String = Properties.TemporaryFolder & "\" & TempAssetFile.Replace(".zip", "")
+                                    UserInterface.UpdateStage1()
+                                    Application.DoEvents()
+                                    IO.Compression.ZipFile.ExtractToDirectory(Properties.TemporaryFolder & "\" & TempAssetFile, ExtractionTarget)
+                                    UserInterface.UpdateStage2()
+                                    Application.DoEvents()
+                                    IO.File.Delete(Properties.TemporaryFolder & "\" & TempAssetFile)
+                                    UserInterface.UpdateStage3()
+                                    Application.DoEvents()
+                                    UpdateScript.Create(ExecutableToMove, ExtractionTarget, LaunchExecutable, TargetFolder)
+                                    UserInterface.UpdateStage4()
+                                    Application.DoEvents()
+                                    UpdateScript.Run()
+                                    End
+                                Else
+                                    UserInterface.DownloadFailed()
+                                    Application.DoEvents()
+                                End If
+                            Catch
+                                UserInterface.DownloadFailed()
+                                Application.DoEvents()
+                            End Try
                         End If
-                    End If
-                End Using
+                    End Using
+                End If
             End If
         Catch
             UserInterface.DownloadFailed()
