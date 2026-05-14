@@ -24,34 +24,34 @@
         Shared Property Timeout As Integer = 250 '          WEBCLIENT TIMEOUT (IN MILLISECONDS)
     End Structure
     Structure UserInterface
-        Public Shared Sub CheckStage1() '                           ### YOUR UI CODE THAT HAPPENS BEFORE CHECKING FOR UPDATES ###########################################################################################################################################################################################################
+        Public Shared Sub CheckStage1() '                                                 ### YOUR UI CODE THAT HAPPENS BEFORE CHECKING FOR UPDATES ###########################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub CheckTrue() '                             ### YOUR UI CODE THAT HAPPENS IF AN UPDATE IS AVAILABLE #############################################################################################################################################################################################################
+        Public Shared Sub CheckTrue() '                                                   ### YOUR UI CODE THAT HAPPENS IF AN UPDATE IS AVAILABLE #############################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub CheckFalse() '                            ### YOUR UI CODE THAT HAPPENS IF NO UPDATE IS AVAILABLE #############################################################################################################################################################################################################
+        Public Shared Sub CheckFalse() '                                                  ### YOUR UI CODE THAT HAPPENS IF NO UPDATE IS AVAILABLE #############################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub CheckFailed() '                           ### YOUR UI CODE THAT HAPPENS IF THE UPDATE CHECK HAS FAILED ########################################################################################################################################################################################################
+        Public Shared Sub CheckFailed() '                                                 ### YOUR UI CODE THAT HAPPENS IF THE UPDATE CHECK HAS FAILED ########################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub DownloadProgress(Progress As Integer) '   ### YOUR UI CODE THAT HAPPENS DURING DOWNLOAD #######################################################################################################################################################################################################################
+        Public Shared Sub DownloadProgress(Progress As Integer, AssetPart As Integer) '   ### YOUR UI CODE THAT HAPPENS DURING DOWNLOAD #######################################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub UpdateStage1() '                          ### YOUR UI CODE THAT HAPPENS BEFORE ARCHIVE EXTRACTION #############################################################################################################################################################################################################
+        Public Shared Sub UpdateStage1() '                                                ### YOUR UI CODE THAT HAPPENS BEFORE ARCHIVE EXTRACTION #############################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub UpdateStage2() '                          ### YOUR UI CODE THAT HAPPENS BEFORE ARCHIVE DELETION ###############################################################################################################################################################################################################
+        Public Shared Sub UpdateStage2() '                                                ### YOUR UI CODE THAT HAPPENS BEFORE ARCHIVE DELETION ###############################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub UpdateStage3() '                          ### YOUR UI CODE THAT HAPPENS BEFORE UPDATESCRIPT IS CREATED ########################################################################################################################################################################################################
+        Public Shared Sub UpdateStage3() '                                                ### YOUR UI CODE THAT HAPPENS BEFORE UPDATESCRIPT IS CREATED ########################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub UpdateStage4() '                          ### YOUR UI CODE THAT HAPPENS BEFORE UPDATESCRIPT IS LAUNCHED #######################################################################################################################################################################################################
+        Public Shared Sub UpdateStage4() '                                                ### YOUR UI CODE THAT HAPPENS BEFORE UPDATESCRIPT IS LAUNCHED #######################################################################################################################################################################################################
 
         End Sub
-        Public Shared Sub DownloadFailed() '                        ### YOUR UI CODE THAT HAPPENS WHEN THE DOWNLOAD HAS FAILED ##########################################################################################################################################################################################################
+        Public Shared Sub DownloadFailed() '                                              ### YOUR UI CODE THAT HAPPENS WHEN THE DOWNLOAD HAS FAILED ##########################################################################################################################################################################################################
 
         End Sub
     End Structure
@@ -63,31 +63,37 @@
     '####################################################################################################################################################################################################################################################################################################################################
     Structure Handler
         Public Shared Sub DownloadProgressAsynchronous(sender As Object, e As Net.DownloadProgressChangedEventArgs)
-            UserInterface.DownloadProgress(e.ProgressPercentage)
+            UserInterface.DownloadProgress(e.ProgressPercentage, TemporaryBuffer.FileCount)
         End Sub
         Public Shared Sub DownloadFinishedAsynchronous(sender As Object, e As ComponentModel.AsyncCompletedEventArgs)
-            UserInterface.DownloadProgress(0)
             Application.DoEvents()
+            UserInterface.DownloadProgress(0, TemporaryBuffer.FileCount)
+            Application.DoEvents()
+
             If Not e.Cancelled Then
                 If Properties.AssetParts = 1 Then
                     Dim DownloadTarget As String = Properties.TemporaryFolder & "\" & Properties.AssetFile
                     Dim ExtractionTarget As String = DownloadTarget.Replace(".zip", "")
 
+                    Application.DoEvents()
                     UserInterface.UpdateStage1()
                     Application.DoEvents()
 
                     IO.Compression.ZipFile.ExtractToDirectory(DownloadTarget, ExtractionTarget)
 
+                    Application.DoEvents()
                     UserInterface.UpdateStage2()
                     Application.DoEvents()
 
                     IO.File.Delete(DownloadTarget)
 
+                    Application.DoEvents()
                     UserInterface.UpdateStage3()
                     Application.DoEvents()
 
                     UpdateScript.Create(TemporaryBuffer.ExecutableToMove, ExtractionTarget, TemporaryBuffer.LaunchExecutable, TemporaryBuffer.TargetFolder)
 
+                    Application.DoEvents()
                     UserInterface.UpdateStage4()
                     Application.DoEvents()
 
@@ -121,24 +127,30 @@
                         Catch
                             TemporaryBuffer.ExecutableToMove = ""
 
+                            Application.DoEvents()
                             UserInterface.DownloadFailed()
                             Application.DoEvents()
                         End Try
+
+                        Application.DoEvents()
                         UserInterface.UpdateStage1()
                         Application.DoEvents()
 
                         IO.Compression.ZipFile.ExtractToDirectory(Properties.TemporaryFolder & "\" & Properties.AssetFile, Properties.TemporaryFolder & "\" & Properties.AssetFile.Replace(".zip", ""))
 
+                        Application.DoEvents()
                         UserInterface.UpdateStage2()
                         Application.DoEvents()
 
                         IO.File.Delete(Properties.TemporaryFolder & "\" & Properties.AssetFile)
 
+                        Application.DoEvents()
                         UserInterface.UpdateStage3()
                         Application.DoEvents()
 
                         UpdateScript.Create(TemporaryBuffer.ExecutableToMove, ExtractionTarget, TemporaryBuffer.LaunchExecutable, TemporaryBuffer.TargetFolder)
 
+                        Application.DoEvents()
                         UserInterface.UpdateStage4()
                         Application.DoEvents()
 
@@ -155,6 +167,7 @@
                 For i = 1 To Properties.Retries
                     If i = Properties.Retries Then
                         TemporaryBuffer.ExecutableToMove = ""
+                        Application.DoEvents()
                         UserInterface.DownloadFailed()
                         Application.DoEvents()
                     Else
@@ -366,6 +379,7 @@
                         Using UpdateClient As New Net.WebClient
                             TemporaryBuffer.UpdateURL = "https://github.com/" & Properties.RepositoryOwnerName & "/" & Properties.RepositoryName & "/releases/latest"
 
+                            Application.DoEvents()
                             UserInterface.CheckStage1()
                             Application.DoEvents()
 
@@ -405,19 +419,23 @@
 
                                 If Not Properties.Silent AndAlso CurrentVersion <> UpdateVersion Then
                                     If Strings.UpdateAvailable = DialogResult.Yes Then
+                                        Application.DoEvents()
                                         UserInterface.CheckTrue()
                                         Application.DoEvents()
                                         Return True
                                     Else
+                                        Application.DoEvents()
                                         UserInterface.CheckFalse()
                                         Application.DoEvents()
                                         Return False
                                     End If
                                 ElseIf CurrentVersion <> UpdateVersion Then
+                                    Application.DoEvents()
                                     UserInterface.CheckTrue()
                                     Application.DoEvents()
                                     Return True
                                 Else
+                                    Application.DoEvents()
                                     UserInterface.CheckFalse()
                                     Application.DoEvents()
                                 End If
@@ -427,6 +445,7 @@
                         If Strings.ServerUnreachable = DialogResult.Retry Then
                             Check()
                         Else
+                            Application.DoEvents()
                             UserInterface.CheckFailed()
                             Application.DoEvents()
                         End If
@@ -435,11 +454,13 @@
                     If Strings.NoInternetConnection = DialogResult.Retry Then
                         Check()
                     Else
+                        Application.DoEvents()
                         UserInterface.CheckFailed()
                         Application.DoEvents()
                     End If
                 End If
             Catch
+                Application.DoEvents()
                 UserInterface.CheckFailed()
                 Application.DoEvents()
                 If Not Properties.Silent Then Strings.UpdateCheckFailed()
@@ -507,27 +528,32 @@
                                 If IO.File.Exists(TemporaryBuffer.DownloadTarget) Then
                                     Dim ExtractionTarget As String = TemporaryBuffer.DownloadTarget.Replace(".zip", "")
 
+                                    Application.DoEvents()
                                     UserInterface.UpdateStage1()
                                     Application.DoEvents()
 
                                     IO.Compression.ZipFile.ExtractToDirectory(TemporaryBuffer.DownloadTarget, ExtractionTarget)
 
+                                    Application.DoEvents()
                                     UserInterface.UpdateStage2()
                                     Application.DoEvents()
 
                                     IO.File.Delete(TemporaryBuffer.DownloadTarget)
 
+                                    Application.DoEvents()
                                     UserInterface.UpdateStage3()
                                     Application.DoEvents()
 
                                     UpdateScript.Create(ExecutableToMove, ExtractionTarget, TemporaryBuffer.LaunchExecutable, TemporaryBuffer.TargetFolder)
 
+                                    Application.DoEvents()
                                     UserInterface.UpdateStage4()
                                     Application.DoEvents()
 
                                     UpdateScript.Run()
                                     End
                                 Else
+                                    Application.DoEvents()
                                     UserInterface.DownloadFailed()
                                     Application.DoEvents()
                                 End If
@@ -575,31 +601,37 @@
                                     If IO.File.Exists(Properties.TemporaryFolder & "\" & Properties.AssetFile) Then
                                         Dim ExtractionTarget As String = Properties.TemporaryFolder & "\" & Properties.AssetFile.Replace(".zip", "")
 
+                                        Application.DoEvents()
                                         UserInterface.UpdateStage1()
                                         Application.DoEvents()
 
                                         IO.Compression.ZipFile.ExtractToDirectory(Properties.TemporaryFolder & "\" & Properties.AssetFile, ExtractionTarget)
 
+                                        Application.DoEvents()
                                         UserInterface.UpdateStage2()
                                         Application.DoEvents()
 
                                         IO.File.Delete(Properties.TemporaryFolder & "\" & Properties.AssetFile)
 
+                                        Application.DoEvents()
                                         UserInterface.UpdateStage3()
                                         Application.DoEvents()
 
                                         UpdateScript.Create(ExecutableToMove, ExtractionTarget, TemporaryBuffer.LaunchExecutable, TemporaryBuffer.TargetFolder)
 
+                                        Application.DoEvents()
                                         UserInterface.UpdateStage4()
                                         Application.DoEvents()
 
                                         UpdateScript.Run()
                                         End
                                     Else
+                                        Application.DoEvents()
                                         UserInterface.DownloadFailed()
                                         Application.DoEvents()
                                     End If
                                 Catch
+                                    Application.DoEvents()
                                     UserInterface.DownloadFailed()
                                     Application.DoEvents()
                                 End Try
@@ -610,6 +642,7 @@
                     If Strings.ServerUnreachable = DialogResult.Retry Then
                         Download(ExecutableToMove, UpdateURLOverride, DownloadTargetOverride)
                     Else
+                        Application.DoEvents()
                         UserInterface.DownloadFailed()
                         Application.DoEvents()
                     End If
@@ -618,11 +651,13 @@
                 If Strings.NoInternetConnection = DialogResult.Retry Then
                     Download(ExecutableToMove, UpdateURLOverride, DownloadTargetOverride)
                 Else
+                    Application.DoEvents()
                     UserInterface.DownloadFailed()
                     Application.DoEvents()
                 End If
             End If
         Catch
+            Application.DoEvents()
             UserInterface.DownloadFailed()
             Application.DoEvents()
         End Try
